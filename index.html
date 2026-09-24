@@ -1,0 +1,55 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="لمّتنا - غرف دردشة وصوت"><title>لمّتنا | LAMTNA</title><style>
+*{box-sizing:border-box}body{margin:0;background:#0d1017;color:#fff;font-family:Tahoma,Arial}.top{height:64px;background:#171b25;border-bottom:1px solid #2a3040;padding:10px 16px;display:flex;justify-content:space-between;align-items:center}.logo{font-size:25px;font-weight:800}.layout{height:calc(100vh - 64px);display:grid;grid-template-columns:220px 1fr 240px}.side{background:#151923;padding:14px;border-left:1px solid #2a3040;overflow:auto}.room{background:#1e2430;padding:12px;margin:7px 0;border-radius:11px;cursor:pointer}.room:hover{background:#30384a}.main{display:flex;flex-direction:column}.head{padding:15px;border-bottom:1px solid #2a3040}.msgs{flex:1;overflow:auto;padding:15px}.msg{margin:9px 0}.bubble{display:inline-block;background:#202735;padding:9px 12px;border-radius:13px;max-width:85%;margin-top:3px}.composer{display:flex;gap:7px;padding:10px;border-top:1px solid #2a3040}.composer input,.modal input,.admin input,.admin select{padding:11px;border-radius:10px;border:1px solid #343b4c;background:#0c0f15;color:#fff;width:100%;margin:4px 0}.btn{border:0;border-radius:10px;background:#6858e8;color:#fff;padding:9px 12px;font-weight:bold;cursor:pointer}.danger{background:#a33f58}.green{background:#2d8664}.hint{opacity:.55;font-size:12px}.modal{position:fixed;inset:0;background:#0d1017;display:grid;place-items:center;z-index:5}.card{width:min(92%,390px);background:#181d29;padding:25px;border-radius:20px}.admin{position:fixed;inset:4%;background:#171b25;z-index:4;border-radius:20px;padding:20px;display:none;overflow:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.row{padding:10px;border-bottom:1px solid #2b3140}.tag{background:#4d44a8;border-radius:7px;padding:3px 6px;font-size:10px}.voice{background:#1b2130;padding:12px;border-radius:14px;margin-bottom:12px}@media(max-width:800px){.layout{grid-template-columns:1fr}.side{display:none}.grid{grid-template-columns:1fr}}
+</style></head><body>
+<div id="auth" class="modal"><div class="card"><div style="font-size:38px">🤝</div><h1>لمّتنا</h1><p>مكاننا للّمة والدردشة</p><input id="name" maxlength="24" placeholder="اسم المستخدم"><input id="pass" type="password" placeholder="كلمة المرور"><button class="btn" style="width:100%" onclick="auth()">دخول / إنشاء حساب</button><p id="err" class="hint">أول حساب يصبح المالك. كلمة المرور 6 أحرف على الأقل.</p></div></div>
+<header class="top"><div class="logo">🤝 لمّتنا</div><div><span id="me">زائر</span> <button id="adminBtn" class="btn" style="display:none" onclick="openAdmin()">⚙️ الإدارة</button></div></header>
+<div class="layout"><aside class="side"><b>💬 الغرف</b><div id="rooms"></div></aside><main class="main"><div class="head"><b id="room">الغرفة العامة</b><div id="count" class="hint"></div></div><div id="msgs" class="msgs"></div><form class="composer" onsubmit="chat(event)"><input id="text" placeholder="اكتب رسالتك..."><button class="btn">إرسال</button></form></main><aside class="side"><div class="voice"><b>🎙️ الصوت</b><p id="voiceState" class="hint">غير متصل</p><button class="btn" onclick="startVoice()">دخول</button><button class="btn" onclick="toggleMic()">كتم/فتح</button><button class="btn danger" onclick="stopVoice()">خروج</button></div><b>🟢 المتصلون</b><div id="people"></div><hr><button class="btn" onclick="openPm()">✉️ خاص</button></aside></div>
+<div id="pm" class="modal" style="display:none"><div class="card"><h3>✉️ رسالة خاصة</h3><input id="to" placeholder="اسم العضو"><input id="pt" placeholder="الرسالة"><button class="btn" onclick="sendPrivate()">إرسال</button><button class="btn" onclick="closePm()">إلغاء</button></div></div>
+<div id="adm" class="admin"><button class="btn danger" onclick="closeAdmin()">إغلاق</button><h2>⚙️ لوحة تحكم لمّتنا</h2><div class="grid"><section><h3>👥 المستخدمون</h3><div id="users"></div></section><section><h3>🏠 الغرف</h3><input id="rid" placeholder="معرّف إنجليزي مثل vip"><input id="rname" placeholder="اسم الغرفة"><input id="ricon" placeholder="أيقونة"><button class="btn green" onclick="createRoom()">إنشاء غرفة</button><div id="arooms"></div></section></div></div>
+<script>
+let ws,me='',role='',roomsData=[],stream=null,peers=new Map(),mic=true;
+async function auth(){let n=name.value.trim(),p=pass.value;if(!n||!p)return;let r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,password:p})});if(!r.ok)r=await fetch('/api/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:n,password:p})});if(!r.ok){let d=await r.json();err.textContent=d.error||'حدث خطأ';return}connect(n,p)}
+function connect(n,p){me=n;ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);ws.onopen=()=>ws.send(JSON.stringify({type:'login',name:n,password:p}));ws.onmessage=e=>handle(JSON.parse(e.data))}
+function handle(m){if(m.type==='ready'){auth.style.display='none';role=m.user.role;document.getElementById('me').textContent='👤 '+me+' · '+role;if(['مالك','أدمن'].includes(role))adminBtn.style.display='inline-block';roomsData=m.rooms;renderRooms()}if(m.type==='room'){room.textContent=m.room.icon+' '+m.room.name;msgs.innerHTML='';add('نظام',m.room.welcome);m.history.forEach(x=>add(x.name,x.text,x.role));stopVoice(false)}if(m.type==='rooms'){roomsData=m.rooms;renderRooms();renderAdminRooms()}if(m.type==='adminData'){renderAdminUsers(m.users);renderAdminRooms(m.rooms)}if(m.type==='chat')add(m.name,m.text,m.role);if(m.type==='private')add('✉️ خاص من '+m.from,m.text);if(m.type==='members')renderPeople(m.members);if(m.type==='voice-offer')answerPeer(m.from,m.data);if(m.type==='voice-answer')peers.get(m.from)?.setRemoteDescription(new RTCSessionDescription(m.data));if(m.type==='voice-ice')peers.get(m.from)?.addIceCandidate(new RTCIceCandidate(m.data));if(m.type==='voice-presence'&&m.action==='leave'){peers.get(m.name)?.close();peers.delete(m.name)}if(m.type==='error')alert(m.message)}
+function renderRooms(){rooms.innerHTML=roomsData.map(r=>`<div class="room" onclick="join('${r.id}')">${r.icon} ${esc(r.name)}</div>`).join('')}function join(id){ws?.send(JSON.stringify({type:'join',room:id}))}
+function chat(e){e.preventDefault();let t=text.value.trim();if(t)ws.send(JSON.stringify({type:'chat',text:t}));text.value=''}function add(n,t,r=''){let d=document.createElement('div');d.className='msg';d.innerHTML='<b>'+esc(n)+'</b> '+(r?'<small class="tag">'+esc(r)+'</small>':'')+'<br><span class="bubble">'+esc(t)+'</span>';msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight}
+function renderPeople(a){
+ count.textContent=a.length+' متصل';
+ people.innerHTML=a.map(x=>'<div class="row">🟢 '+esc(x.name)+' <span class="tag">'+esc(x.role)+'</span></div>').join('');
+ if(stream) a.filter(x=>x.name!==me&&!peers.has(x.name)).forEach(x=>makeOffer(x.name));
+}
+function openPm(){pm.style.display='grid'}function closePm(){pm.style.display='none'}function sendPrivate(){let t=to.value.trim(),x=pt.value.trim();if(t&&x)ws.send(JSON.stringify({type:'private',to:t,text:x}));closePm()}
+function openAdmin(){adm.style.display='block';ws.send(JSON.stringify({type:'admin',action:'refresh'}))}function closeAdmin(){adm.style.display='none'}
+function renderAdminUsers(a=[]){users.innerHTML=a.map(u=>`<div class="row"><b>${esc(u.name)}</b> <span class="tag">${esc(u.role)}</span> ${u.banned?'🚫':''}<select onchange="setRole('${esc(u.name)}',this.value)"><option value="">الرتبة</option><option>عضو</option><option>مشرف</option><option>أدمن</option></select><button class="btn danger" onclick="ban('${esc(u.name)}')">حظر</button><button class="btn" onclick="kick('${esc(u.name)}')">طرد</button></div>`).join('')}
+function renderAdminRooms(a=roomsData){arooms.innerHTML=a.map(r=>`<div class="row">${r.icon} ${esc(r.name)} ${r.id!=='general'?`<button class="btn danger" onclick="delRoom('${r.id}')">حذف</button>`:''}</div>`).join('')}
+function setRole(n,r){if(r)ws.send(JSON.stringify({type:'admin',action:'setRole',target:n,role:r}))}function ban(n){ws.send(JSON.stringify({type:'admin',action:'ban',target:n}))}function kick(n){ws.send(JSON.stringify({type:'admin',action:'kick',target:n}))}function createRoom(){let id=rid.value.trim(),n=rname.value.trim(),i=ricon.value.trim()||'💬';if(id&&n)ws.send(JSON.stringify({type:'admin',action:'createRoom',id,name:n,icon:i}))}function delRoom(id){ws.send(JSON.stringify({type:'admin',action:'deleteRoom',id}))}
+async function startVoice(){
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  voiceState.textContent='🎙️ متصل';
+  mic=true;
+  ws.send(JSON.stringify({type:'voice-join'}));
+  document.querySelectorAll('#people .row').forEach(async el=>{
+   const n=el.textContent.replace('🟢 ','').split(' ')[0];
+   if(n&&n!==me&&!peers.has(n)) await makeOffer(n);
+  });
+ }catch{voiceState.textContent='لم يتم السماح بالميكروفون'}
+}
+async function makeOffer(to){
+ if(!stream||peers.has(to))return;
+ const pc=new RTCPeerConnection();
+ peers.set(to,pc);
+ stream.getTracks().forEach(t=>pc.addTrack(t,stream));
+ pc.onicecandidate=e=>e.candidate&&ws.send(JSON.stringify({type:'voice-ice',to,data:e.candidate}));
+ pc.ontrack=e=>{
+  let a=document.getElementById('a_'+to);
+  if(!a){a=document.createElement('audio');a.id='a_'+to;a.autoplay=true;document.body.appendChild(a)}
+  a.srcObject=e.streams[0];
+ };
+ const offer=await pc.createOffer();
+ await pc.setLocalDescription(offer);
+ ws.send(JSON.stringify({type:'voice-offer',to,data:offer}));
+}function toggleMic(){if(!stream)return;mic=!mic;stream.getAudioTracks().forEach(t=>t.enabled=mic);voiceState.textContent=mic?'🎙️ المايك مفتوح':'🔇 مكتوم'}function stopVoice(send=true){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;peers.forEach(p=>p.close());peers.clear();if(send)ws.send(JSON.stringify({type:'voice-leave'}))}voiceState.textContent='غير متصل'}
+async function answerPeer(from,offer){if(!stream)return;let pc=new RTCPeerConnection();peers.set(from,pc);stream.getTracks().forEach(t=>pc.addTrack(t,stream));pc.onicecandidate=e=>e.candidate&&ws.send(JSON.stringify({type:'voice-ice',to:from,data:e.candidate}));pc.ontrack=e=>{let a=document.getElementById('a_'+from);if(!a){a=document.createElement('audio');a.id='a_'+from;a.autoplay=true;document.body.appendChild(a)}a.srcObject=e.streams[0]};await pc.setRemoteDescription(new RTCSessionDescription(offer));let ans=await pc.createAnswer();await pc.setLocalDescription(ans);ws.send(JSON.stringify({type:'voice-answer',to:from,data:ans}))}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+</script></body></html>
